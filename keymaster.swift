@@ -1,5 +1,6 @@
 // Keymaster, access Keychain secrets guarded by TouchID
 //
+import Darwin // For getpass()
 import Foundation
 import LocalAuthentication
 
@@ -196,13 +197,41 @@ func main() {
 
   switch action {
   case "set":
-    if inputArgs.count != 3 {
-      print("Error: 'set' action requires a key and a secret.")
+    let key: String
+    let secret: String
+
+    if inputArgs.count == 3 { // keymaster set <key> <secret>
+      key = inputArgs[1]
+      secret = inputArgs[2]
+    } else if inputArgs.count == 2 { // keymaster set <key> -> prompt for secret
+      key = inputArgs[1]
+      print("Enter password for key '\(key)' [input is hidden]: ", terminator: "")
+      // Ensure stdout is flushed so the prompt appears before readLine waits for input.
+      // For getpass, it's good practice to flush stdout.
+      fflush(stdout)
+
+      if let cPassword = getpass("") { // getpass prompt is often ignored, so we print our own.
+        let enteredPassword = String(cString: cPassword)
+        // It's good practice to clear the memory used by getpass if possible,
+        // though getpass itself often uses a static buffer.
+        // For this example, we'll rely on ARC for the Swift string.
+        if enteredPassword.isEmpty {
+            // User pressed Enter without typing anything.
+            print("\nPassword input was empty. Operation cancelled, no password will be set.")
+            exit(EXIT_FAILURE)
+        }
+        secret = enteredPassword
+      } else {
+        // getpass() returned NULL, e.g., due to EOF (Ctrl+D) or an error.
+        print("\nPassword input cancelled or failed. No password will be set.")
+        exit(EXIT_FAILURE)
+      }
+    } else {
+      print("Error: 'set' action requires a key, and optionally a secret on the command line.")
+      print("If the secret is not provided as an argument, you will be prompted for it.")
       usage()
       exit(EXIT_FAILURE)
     }
-    let key = inputArgs[1]
-    let secret = inputArgs[2]
     context.evaluatePolicy(policy, localizedReason: "set the password for \(key)") { success, authError in
       if success && authError == nil {
         guard setPassword(key: key, password: secret) else {
