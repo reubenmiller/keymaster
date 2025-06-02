@@ -57,12 +57,21 @@ func getPassword(key: String) -> String? {
 }
 
 func usage() {
-  print("keymaster [get|set|delete] [key] [secret]")
+  print("Usage: keymaster <action> <key> [<secret>]")
+  print("keymaster get <key>")
+  print("keymaster set <key> <secret>")
+  print("keymaster delete <key>")
 }
 
 func main() {
   let inputArgs: [String] = Array(CommandLine.arguments.dropFirst())
-  if (inputArgs.count < 2 || inputArgs.count > 3) {
+
+  // Check for help flags
+  if inputArgs.contains("--help") || inputArgs.contains("-h") {
+    usage()
+    exit(EXIT_SUCCESS)
+  }
+  if (inputArgs.count < 2 || inputArgs.count > 3) && !(inputArgs.count == 1 && (inputArgs[0] == "get" || inputArgs[0] == "delete")) {
     usage()
     exit(EXIT_FAILURE)
   }
