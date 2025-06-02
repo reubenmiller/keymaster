@@ -6,13 +6,25 @@ import LocalAuthentication
 let policy = LAPolicy.deviceOwnerAuthenticationWithBiometrics
 
 func setPassword(key: String, password: String) -> Bool {
-  let query: [String: Any] = [
-    kSecClass as String: kSecClassGenericPassword,
-    kSecAttrService as String: key,
+  let attributes: [String: Any] = [
     kSecValueData as String: password.data(using: .utf8)!
   ]
 
-  let status = SecItemAdd(query as CFDictionary, nil)
+  let queryForUpdate: [String: Any] = [
+    kSecClass as String: kSecClassGenericPassword,
+    kSecAttrService as String: key
+  ]
+
+  // Try to update an existing item
+  var status = SecItemUpdate(queryForUpdate as CFDictionary, attributes as CFDictionary)
+
+  if status == errSecItemNotFound {
+    // If item not found, try to add it
+    var newItemQuery = queryForUpdate
+    newItemQuery[kSecValueData as String] = password.data(using: .utf8)!
+    status = SecItemAdd(newItemQuery as CFDictionary, nil)
+  }
+
   return status == errSecSuccess
 }
 
