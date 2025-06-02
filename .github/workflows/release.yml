@@ -3,7 +3,7 @@ name: Release Keymaster
 on:
   push:
     tags:
-      - 'v*.*.*' # Trigger on SemVer tags like v0.1.0, v1.2.3
+      - '*.*.*' # Trigger on SemVer tags like v0.1.0, v1.2.3
 
 jobs:
   build-and-release:
