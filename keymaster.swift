@@ -286,26 +286,49 @@ func main() {
     if remainingArgs.count == 1 {
         secret = String(remainingArgs.first!)
     } else if remainingArgs.isEmpty {
-        print("Enter password for key '\(key)' [input is hidden]: ", terminator: "")
-        fflush(stdout)
-        if let cPassword = getpass("") {
-            let enteredPassword = String(cString: cPassword)
-            if enteredPassword.isEmpty {
-                print("\nPassword input was empty. Operation cancelled, no password will be set.")
-                exit(EXIT_FAILURE)
-            }
-            secret = enteredPassword
-        } else {
-            print("\nPassword input cancelled or failed. No password will be set.")
-            exit(EXIT_FAILURE)
+      // No password provided on CLI, prompt if necessary
+      if noClobber {
+        // With --no-clobber, check if item exists before prompting
+        let queryForKeyExistence: [String: Any] = [
+          kSecClass as String: kSecClassGenericPassword,
+          kSecAttrService as String: key,
+          kSecAttrLabel as String: keymasterLabelValue
+        ]
+        var item: CFTypeRef?
+        let existingStatus = SecItemCopyMatching(queryForKeyExistence as CFDictionary, &item)
+
+        if existingStatus == errSecSuccess {
+          print("Key '\(key)' already exists in keychain. Not prompting for password due to --no-clobber flag.")
+          exit(EXIT_FAILURE) // Or EXIT_SUCCESS if preferred for "no action taken as requested"
+        } else if existingStatus != errSecItemNotFound {
+          // An error occurred other than item not found
+          let errorDescription = SecCopyErrorMessageString(existingStatus, nil) as String? ?? "Unknown OSStatus"
+          print("Error checking keychain for key '\(key)' before prompting: \(existingStatus) (\(errorDescription)).")
+          exit(EXIT_FAILURE)
         }
+        // If errSecItemNotFound, proceed to prompt below
+      }
+
+      print("Enter password for key '\(key)' [input is hidden]: ", terminator: "")
+      fflush(stdout)
+      if let cPassword = getpass("") {
+        let enteredPassword = String(cString: cPassword)
+        if enteredPassword.isEmpty {
+          print("\nPassword input was empty. Operation cancelled, no password will be set.")
+          exit(EXIT_FAILURE)
+        }
+        secret = enteredPassword
+      } else {
+        print("\nPassword input cancelled or failed. No password will be set.")
+        exit(EXIT_FAILURE)
+      }
     } else {
         // Too many arguments after processing key and flag
         print("Error: Invalid arguments for 'set' action.")
         print("See usage for correct format.")
         usage()
-        exit(EXIT_FAILURE)
-    }
+            exit(EXIT_FAILURE)
+        }
 
     context.evaluatePolicy(policy, localizedReason: "set the password for \(key)") { success, authError in
       if success && authError == nil {
