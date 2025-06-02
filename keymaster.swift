@@ -3,28 +3,68 @@
 import Foundation
 import LocalAuthentication
 
+// Policy for Touch ID/Face ID authentication
 let policy = LAPolicy.deviceOwnerAuthenticationWithBiometrics
+// Unique label to identify keychain entries managed by this keymaster tool
+let keymasterLabelValue = "com.github.reubenmiller.keymaster.entry"
 
 func setPassword(key: String, password: String) -> Bool {
-  let attributes: [String: Any] = [
-    kSecValueData as String: password.data(using: .utf8)!
-  ]
+  // Attributes to update or add for the keychain item
+  let valueData = password.data(using: .utf8)!
 
+  // Query to find an existing item managed by keymaster
   let queryForUpdate: [String: Any] = [
     kSecClass as String: kSecClassGenericPassword,
-    kSecAttrService as String: key
+    kSecAttrService as String: key,
+    kSecAttrLabel as String: keymasterLabelValue // Ensure we only target keymaster entries
   ]
 
-  // Try to update an existing item
-  var status = SecItemUpdate(queryForUpdate as CFDictionary, attributes as CFDictionary)
+  let attributesToUpdate: [String: Any] = [
+    kSecValueData as String: valueData
+  ]
+
+  // Try to update an existing item managed by keymaster
+  var status = SecItemUpdate(queryForUpdate as CFDictionary, attributesToUpdate as CFDictionary)
 
   if status == errSecItemNotFound {
-    // If item not found, try to add it
-    var newItemQuery = queryForUpdate
-    newItemQuery[kSecValueData as String] = password.data(using: .utf8)!
-    status = SecItemAdd(newItemQuery as CFDictionary, nil)
-  }
+    // No item found with our key AND label.
+    // Check if an item with the same service key exists *without* our label.
+    let queryForUnlabeledExisting: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: key
+        // No kSecAttrLabel here
+    ]
+    var item: CFTypeRef?
+    let unlabeledCheckStatus = SecItemCopyMatching(queryForUnlabeledExisting as CFDictionary, &item)
 
+    if unlabeledCheckStatus == errSecSuccess {
+        // An item with this service key exists but is not managed by this version of keymaster.
+        print("Error: An item with key '\(key)' already exists but is not managed by keymaster (it lacks the keymaster label).")
+        print("To manage this item with keymaster, it must first be removed or updated to include the keymaster label by other means.")
+        return false // Indicate failure
+    } else if unlabeledCheckStatus == errSecItemNotFound {
+        // Good, no conflicting unlabeled item. Proceed to add a new, labeled item.
+        let attributesForAdd: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: key,
+            kSecAttrLabel as String: keymasterLabelValue, // Add the keymaster label
+            kSecValueData as String: valueData
+        ]
+        status = SecItemAdd(attributesForAdd as CFDictionary, nil)
+        if status == errSecDuplicateItem {
+            print("Error: Failed to add password for key '\(key)'. A duplicate item might exist despite checks. Status: \(status)")
+            return false
+        }
+    } else {
+        // Some other error occurred while checking for an unlabeled item.
+        print("Error checking for existing unlabeled item for key '\(key)'. Status: \(unlabeledCheckStatus)")
+        return false
+    }
+  } else if status != errSecSuccess {
+    // SecItemUpdate failed for a reason other than errSecItemNotFound
+    print("Error updating password for key '\(key)'. Status: \(status)")
+    return false
+  }
   return status == errSecSuccess
 }
 
@@ -32,6 +72,7 @@ func deletePassword(key: String) -> Bool {
   let query: [String: Any] = [
     kSecClass as String: kSecClassGenericPassword,
     kSecAttrService as String: key,
+    kSecAttrLabel as String: keymasterLabelValue, // Ensure we only delete keymaster entries
     kSecMatchLimit as String: kSecMatchLimitOne
   ]
   let status = SecItemDelete(query as CFDictionary)
@@ -42,6 +83,7 @@ func getPassword(key: String) -> String? {
   let query: [String: Any] = [
     kSecClass as String: kSecClassGenericPassword,
     kSecAttrService as String: key,
+    kSecAttrLabel as String: keymasterLabelValue, // Ensure we only get keymaster entries
     kSecMatchLimit as String: kSecMatchLimitOne,
     kSecReturnData as String: true
   ]
@@ -56,11 +98,57 @@ func getPassword(key: String) -> String? {
   return password
 }
 
+func listPasswords() -> Bool {
+  let query: [String: Any] = [
+    kSecClass as String: kSecClassGenericPassword,
+    kSecAttrLabel as String: keymasterLabelValue, // Filter by the keymaster label
+    kSecMatchLimit as String: kSecMatchLimitAll,
+    kSecReturnAttributes as String: true,
+    // kSecAttrSynchronizable as String: kSecAttrSynchronizableAny // Optional: uncomment to include iCloud keychain items
+  ]
+
+  var cfArrayResult: CFTypeRef?
+  let status = SecItemCopyMatching(query as CFDictionary, &cfArrayResult)
+
+  if status == errSecItemNotFound {
+    print("No keymaster-managed passwords found in keychain.")
+    return true // Successful operation, no items found
+  }
+
+  guard status == errSecSuccess else {
+    // For more detailed error, you could use:
+    // let errorDescription = SecCopyErrorMessageString(status, nil) as String? ?? "Unknown OSStatus"
+    // print("Error fetching passwords from keychain. Status: \(status) (\(errorDescription))")
+    print("Error fetching keymaster-managed passwords from keychain. Status: \(status)")
+    return false // Operation failed
+  }
+
+  guard let retrievedItems = cfArrayResult as? [[String: Any]] else {
+    // This should not happen if status is errSecSuccess with kSecMatchLimitAll
+    print("Error: Unexpected data format received from keychain.")
+    return false
+  }
+
+  if retrievedItems.isEmpty {
+    print("No keymaster-managed passwords found in keychain.")
+    return true
+  }
+
+  print("Stored keymaster-managed keys (services):")
+  for item in retrievedItems {
+    if let service = item[kSecAttrService as String] as? String {
+      print("- \(service)")
+    }
+  }
+  return true
+}
+
 func usage() {
   print("Usage: keymaster <action> <key> [<secret>]")
   print("keymaster get <key>")
   print("keymaster set <key> <secret>")
   print("keymaster delete <key>")
+  print("keymaster list")
 }
 
 func main() {
@@ -71,29 +159,52 @@ func main() {
     usage()
     exit(EXIT_SUCCESS)
   }
-  if (inputArgs.count < 2 || inputArgs.count > 3) && !(inputArgs.count == 1 && (inputArgs[0] == "get" || inputArgs[0] == "delete")) {
+
+  if inputArgs.isEmpty {
+    print("Error: No action specified.")
     usage()
     exit(EXIT_FAILURE)
   }
+
   let action = inputArgs[0]
-  let key = inputArgs[1]
-  var secret = ""
-  if (action == "set" && inputArgs.count == 3) {
-    secret = inputArgs[2]
+
+  // Handle 'list' action separately as it doesn't require Touch ID
+  if action == "list" {
+    if inputArgs.count != 1 {
+      print("Error: 'list' action does not take additional arguments.")
+      usage()
+      exit(EXIT_FAILURE)
+    }
+    if listPasswords() {
+      exit(EXIT_SUCCESS)
+    } else {
+      // listPasswords() already prints specific error messages
+      exit(EXIT_FAILURE)
+    }
   }
 
+  // For actions requiring Touch ID (set, get, delete)
   let context = LAContext()
-  context.touchIDAuthenticationAllowableReuseDuration = 0
+  context.touchIDAuthenticationAllowableReuseDuration = 0 // Require fresh authentication each time
 
-  var error: NSError?
-  guard context.canEvaluatePolicy(policy, error: &error) else {
-    print("This Mac doesn't support deviceOwnerAuthenticationWithBiometrics")
+  var authPolicyError: NSError?
+  guard context.canEvaluatePolicy(policy, error: &authPolicyError) else {
+    let errorMsg = authPolicyError?.localizedDescription ?? "Policy not satisfiable"
+    print("This Mac doesn't support deviceOwnerAuthenticationWithBiometrics or it's not configured. Error: \(errorMsg)")
     exit(EXIT_FAILURE)
   }
 
-  if (action == "set") {
-    context.evaluatePolicy(policy, localizedReason: "set the password for \(key)") { success, error in
-      if success && error == nil {
+  switch action {
+  case "set":
+    if inputArgs.count != 3 {
+      print("Error: 'set' action requires a key and a secret.")
+      usage()
+      exit(EXIT_FAILURE)
+    }
+    let key = inputArgs[1]
+    let secret = inputArgs[2]
+    context.evaluatePolicy(policy, localizedReason: "set the password for \(key)") { success, authError in
+      if success && authError == nil {
         guard setPassword(key: key, password: secret) else {
           print("Error setting password")
           exit(EXIT_FAILURE)
@@ -101,17 +212,22 @@ func main() {
         print("Key \(key) has been successfully set in the keychain")
         exit(EXIT_SUCCESS)
       } else {
-        let errorDescription = error?.localizedDescription ?? "Unknown error"
-        print("Error \(errorDescription)")
+        let errorDescription = authError?.localizedDescription ?? "Unknown error"
+        print("Authentication failed or was canceled: \(errorDescription)")
         exit(EXIT_FAILURE)
       }
     }
     dispatchMain()
-  }
 
-  if (action == "get") {
-    context.evaluatePolicy(policy, localizedReason: "access the password for \(key)") { success, error in
-      if success && error == nil {
+  case "get":
+    if inputArgs.count != 2 {
+      print("Error: 'get' action requires a key.")
+      usage()
+      exit(EXIT_FAILURE)
+    }
+    let key = inputArgs[1]
+    context.evaluatePolicy(policy, localizedReason: "access the password for \(key)") { success, authError in
+      if success && authError == nil {
         guard let password = getPassword(key: key) else {
           print("Error getting password")
           exit(EXIT_FAILURE)
@@ -119,16 +235,21 @@ func main() {
         print(password)
         exit(EXIT_SUCCESS)
       } else {
-        print("Authentication failed or was canceled: \(error?.localizedDescription ?? "Unknown error")")
+        print("Authentication failed or was canceled: \(authError?.localizedDescription ?? "Unknown error")")
         exit(EXIT_FAILURE)
       }
     }
     dispatchMain()
-  }
 
-  if (action == "delete") {
-    context.evaluatePolicy(policy, localizedReason: "delete the password for \(key)") { success, error in
-      if success && error == nil {
+  case "delete":
+    if inputArgs.count != 2 {
+      print("Error: 'delete' action requires a key.")
+      usage()
+      exit(EXIT_FAILURE)
+    }
+    let key = inputArgs[1]
+    context.evaluatePolicy(policy, localizedReason: "delete the password for \(key)") { success, authError in
+      if success && authError == nil {
         guard deletePassword(key: key) else {
           print("Error deleting password")
           exit(EXIT_FAILURE)
@@ -136,11 +257,16 @@ func main() {
         print("Key \(key) has been successfully deleted from the keychain")
         exit(EXIT_SUCCESS)
       } else {
-        print("Authentication failed or was canceled: \(error?.localizedDescription ?? "Unknown error")")
+        print("Authentication failed or was canceled: \(authError?.localizedDescription ?? "Unknown error")")
         exit(EXIT_FAILURE)
       }
     }
     dispatchMain()
+
+  default:
+    print("Error: Unknown action '\(action)'.")
+    usage()
+    exit(EXIT_FAILURE)
   }
 }
 
