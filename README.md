@@ -17,11 +17,27 @@ You can use `security` in a script, but (AFAIK) you can't tell it to use biometr
 
 🔑 Keymaster fixes this.
 
-## Building Keymaster
+## Installation
+
+### Using Homebrew (Recommended)
+
+1.  Tap the custom Homebrew tap (you only need to do this once)
+    ```bash
+    brew tap reubenmiller/homebrew-keymaster
+    ```
+
+2.  Install Keymaster:
+    ```bash
+    brew install keymaster
+    ```
+
+### Manual Build
 
 Compile the `keymaster.swift` into a binary:
 
-`swiftc keymaster.swift`
+```bash
+swiftc keymaster.swift -o keymaster
+```
 
 Put the binary somewhere in your path.
 
