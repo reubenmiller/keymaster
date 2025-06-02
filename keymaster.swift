@@ -111,15 +111,14 @@ func setPassword(key: String, password: String, addOnly: Bool) -> Bool {
   }
 }
 
-func deletePassword(key: String) -> Bool {
+func deletePassword(key: String) -> OSStatus {
   let query: [String: Any] = [
     kSecClass as String: kSecClassGenericPassword,
     kSecAttrService as String: key,
-    kSecAttrLabel as String: keymasterLabelValue, // Ensure we only delete keymaster entries
-    kSecMatchLimit as String: kSecMatchLimitOne
+    kSecAttrLabel as String: keymasterLabelValue // Ensure we only delete keymaster entries
   ]
   let status = SecItemDelete(query as CFDictionary)
-  return status == errSecSuccess
+  return status
 }
 
 func getPassword(key: String) -> String? {
@@ -356,14 +355,21 @@ func main() {
     let key = inputArgs[1]
     context.evaluatePolicy(policy, localizedReason: "delete the password for \(key)") { success, authError in
       if success && authError == nil {
-        guard deletePassword(key: key) else {
-          print("Error deleting password")
+        let deleteStatus = deletePassword(key: key)
+        switch deleteStatus {
+        case errSecSuccess:
+          print("Key '\(key)' has been successfully deleted from the keychain.")
+          exit(EXIT_SUCCESS)
+        case errSecItemNotFound:
+          print("Error: Password for key '\(key)' not found.")
+          exit(EXIT_FAILURE)
+        default:
+          let errorDescription = SecCopyErrorMessageString(deleteStatus, nil) as String? ?? "Unknown OSStatus"
+          print("Error deleting password for key '\(key)'. Status: \(deleteStatus) (\(errorDescription)).")
           exit(EXIT_FAILURE)
         }
-        print("Key \(key) has been successfully deleted from the keychain")
-        exit(EXIT_SUCCESS)
       } else {
-        print("Authentication failed or was canceled: \(authError?.localizedDescription ?? "Unknown error")")
+        print("Authentication failed or was canceled: \(authError?.localizedDescription ?? "Unknown authentication error")")
         exit(EXIT_FAILURE)
       }
     }
