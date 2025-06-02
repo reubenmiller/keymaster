@@ -187,11 +187,35 @@ func listPasswords() -> Bool {
 }
 
 func usage() {
-  print("Usage: keymaster <action> <key> [<secret>]")
-  print("keymaster get <key>")
-  print("keymaster set <key> [<secret>] [--no-clobber]")
-  print("keymaster delete <key>")
-  print("keymaster list")
+  let programName = "keymaster"
+  print("""
+  Usage: \(programName) <command> [options]
+
+  A simple command-line tool to manage passwords in the macOS Keychain,
+  secured by Touch ID or Face ID.
+
+  Commands:
+    get <key>                     Retrieve and print the password for <key>.
+    set <key> [<password>]        Set the password for <key>.
+                                  If <password> is not provided, you will be prompted.
+    delete <key>                  Delete the password for <key> from the keychain.
+    list                          List all keys managed by \(programName).
+    help, --help, -h              Show this help message.
+
+  Options for 'set' command:
+    --no-clobber                  Only set the password if <key> does not already exist.
+
+  Examples:
+    \(programName) set myServiceAPIKey                            # Set password for 'myServiceAPIKey', will prompt for password
+    \(programName) set myServiceAPIKey S3cr3tP@sswOrd             # Set password for 'myServiceAPIKey' directly
+    \(programName) set newAppKey --no-clobber                    # Set password for 'newAppKey' only if it doesn't exist, will prompt
+    \(programName) set newAppKey S3cr3t --no-clobber             # Set password for 'newAppKey' directly, only if it doesn't exist
+    \(programName) get myServiceAPIKey                            # Retrieve password for 'myServiceAPIKey'
+    \(programName) list                                          # List all stored keys
+    \(programName) delete myServiceAPIKey                        # Delete password for 'myServiceAPIKey'
+    \(programName) --help                                       # Show this help message
+
+  """)
 }
 
 func main() {
