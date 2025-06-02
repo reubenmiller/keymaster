@@ -9,8 +9,8 @@ let policy = LAPolicy.deviceOwnerAuthenticationWithBiometrics
 // Unique label to identify keychain entries managed by this keymaster tool
 let keymasterLabelValue = "com.github.reubenmiller.keymaster.entry"
 
-func setPassword(key: String, password: String) -> Bool {
-  // Attributes to update or add for the keychain item
+func setPassword(key: String, password: String, addOnly: Bool) -> Bool {
+  // Data for the keychain item
   let valueData = password.data(using: .utf8)!
 
   // Query to find an existing item managed by keymaster
@@ -20,30 +20,30 @@ func setPassword(key: String, password: String) -> Bool {
     kSecAttrLabel as String: keymasterLabelValue // Ensure we only target keymaster entries
   ]
 
-  let attributesToUpdate: [String: Any] = [
-    kSecValueData as String: valueData
-  ]
-
-  // Try to update an existing item managed by keymaster
-  var status = SecItemUpdate(queryForUpdate as CFDictionary, attributesToUpdate as CFDictionary)
-
-  if status == errSecItemNotFound {
-    // No item found with our key AND label.
-    // Check if an item with the same service key exists *without* our label.
-    let queryForUnlabeledExisting: [String: Any] = [
-        kSecClass as String: kSecClassGenericPassword,
-        kSecAttrService as String: key
-        // No kSecAttrLabel here
-    ]
+  if addOnly {
+    // --no-clobber / addOnly mode: only add if it doesn't exist
     var item: CFTypeRef?
-    let unlabeledCheckStatus = SecItemCopyMatching(queryForUnlabeledExisting as CFDictionary, &item)
+    let existingStatus = SecItemCopyMatching(queryForUpdate as CFDictionary, &item)
 
-    if unlabeledCheckStatus == errSecSuccess {
-        // An item with this service key exists but is not managed by this version of keymaster.
+    if existingStatus == errSecSuccess {
+      // Item already exists, and we are in addOnly mode
+      print("Key '\(key)' already exists in keychain. Not overwriting due to --no-clobber flag.")
+      return false // Indicate failure to add because it exists and addOnly is true
+    } else if existingStatus == errSecItemNotFound {
+      // Item does not exist, proceed to add (after checking for unlabeled)
+      // Check if an item with the same service key exists *without* our label.
+      let queryForUnlabeledExisting: [String: Any] = [
+          kSecClass as String: kSecClassGenericPassword,
+          kSecAttrService as String: key
+      ]
+      var unlabeledItem: CFTypeRef?
+      let unlabeledCheckStatus = SecItemCopyMatching(queryForUnlabeledExisting as CFDictionary, &unlabeledItem)
+
+      if unlabeledCheckStatus == errSecSuccess {
         print("Error: An item with key '\(key)' already exists but is not managed by keymaster (it lacks the keymaster label).")
         print("To manage this item with keymaster, it must first be removed or updated to include the keymaster label by other means.")
-        return false // Indicate failure
-    } else if unlabeledCheckStatus == errSecItemNotFound {
+        return false
+      } else if unlabeledCheckStatus == errSecItemNotFound {
         // Good, no conflicting unlabeled item. Proceed to add a new, labeled item.
         let attributesForAdd: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -51,22 +51,64 @@ func setPassword(key: String, password: String) -> Bool {
             kSecAttrLabel as String: keymasterLabelValue, // Add the keymaster label
             kSecValueData as String: valueData
         ]
-        status = SecItemAdd(attributesForAdd as CFDictionary, nil)
-        if status == errSecDuplicateItem {
-            print("Error: Failed to add password for key '\(key)'. A duplicate item might exist despite checks. Status: \(status)")
+        let addStatus = SecItemAdd(attributesForAdd as CFDictionary, nil)
+        if addStatus == errSecDuplicateItem {
+            print("Error: Failed to add password for key '\(key)'. A duplicate item might exist despite checks. Status: \(addStatus)")
             return false
         }
-    } else {
-        // Some other error occurred while checking for an unlabeled item.
+        return addStatus == errSecSuccess
+      } else {
         print("Error checking for existing unlabeled item for key '\(key)'. Status: \(unlabeledCheckStatus)")
         return false
+      }
+    } else {
+      // Some other error occurred while checking for existing keymaster item
+      print("Error checking for existing keymaster-managed item for key '\(key)'. Status: \(existingStatus)")
+      return false
     }
-  } else if status != errSecSuccess {
-    // SecItemUpdate failed for a reason other than errSecItemNotFound
-    print("Error updating password for key '\(key)'. Status: \(status)")
-    return false
+  } else {
+    // Default mode: update if exists, otherwise add
+    let attributesToUpdate: [String: Any] = [
+      kSecValueData as String: valueData
+    ]
+    var status = SecItemUpdate(queryForUpdate as CFDictionary, attributesToUpdate as CFDictionary)
+
+    if status == errSecItemNotFound {
+      // No item found with our key AND label by SecItemUpdate.
+      // Check if an item with the same service key exists *without* our label.
+      let queryForUnlabeledExisting: [String: Any] = [
+          kSecClass as String: kSecClassGenericPassword,
+          kSecAttrService as String: key
+      ]
+      var unlabeledItem: CFTypeRef?
+      let unlabeledCheckStatus = SecItemCopyMatching(queryForUnlabeledExisting as CFDictionary, &unlabeledItem)
+
+      if unlabeledCheckStatus == errSecSuccess {
+          print("Error: An item with key '\(key)' already exists but is not managed by keymaster (it lacks the keymaster label).")
+          print("To manage this item with keymaster, it must first be removed or updated to include the keymaster label by other means.")
+          return false
+      } else if unlabeledCheckStatus == errSecItemNotFound {
+          let attributesForAdd: [String: Any] = [
+              kSecClass as String: kSecClassGenericPassword,
+              kSecAttrService as String: key,
+              kSecAttrLabel as String: keymasterLabelValue,
+              kSecValueData as String: valueData
+          ]
+          status = SecItemAdd(attributesForAdd as CFDictionary, nil)
+          if status == errSecDuplicateItem {
+              print("Error: Failed to add password for key '\(key)'. A duplicate item might exist despite checks. Status: \(status)")
+              return false
+          }
+      } else {
+          print("Error checking for existing unlabeled item for key '\(key)'. Status: \(unlabeledCheckStatus)")
+          return false
+      }
+    } else if status != errSecSuccess {
+      print("Error updating password for key '\(key)'. Status: \(status)")
+      return false
+    }
+    return status == errSecSuccess
   }
-  return status == errSecSuccess
 }
 
 func deletePassword(key: String) -> Bool {
@@ -147,7 +189,7 @@ func listPasswords() -> Bool {
 func usage() {
   print("Usage: keymaster <action> <key> [<secret>]")
   print("keymaster get <key>")
-  print("keymaster set <key> <secret>")
+  print("keymaster set <key> [<secret>] [--no-clobber]")
   print("keymaster delete <key>")
   print("keymaster list")
 }
@@ -197,49 +239,60 @@ func main() {
 
   switch action {
   case "set":
-    let key: String
-    let secret: String
+    var key: String
+    var secret: String
+    var noClobber = false
+    
+    // Process arguments for 'set' command
+    var remainingArgs = inputArgs.dropFirst() // Arguments after "set"
 
-    if inputArgs.count == 3 { // keymaster set <key> <secret>
-      key = inputArgs[1]
-      secret = inputArgs[2]
-    } else if inputArgs.count == 2 { // keymaster set <key> -> prompt for secret
-      key = inputArgs[1]
-      print("Enter password for key '\(key)' [input is hidden]: ", terminator: "")
-      // Ensure stdout is flushed so the prompt appears before readLine waits for input.
-      // For getpass, it's good practice to flush stdout.
-      fflush(stdout)
+    if remainingArgs.isEmpty {
+        print("Error: 'set' action requires a key.")
+        usage()
+        exit(EXIT_FAILURE)
+    }
+    key = String(remainingArgs.removeFirst()) // Extract the key
 
-      if let cPassword = getpass("") { // getpass prompt is often ignored, so we print our own.
-        let enteredPassword = String(cString: cPassword)
-        // It's good practice to clear the memory used by getpass if possible,
-        // though getpass itself often uses a static buffer.
-        // For this example, we'll rely on ARC for the Swift string.
-        if enteredPassword.isEmpty {
-            // User pressed Enter without typing anything.
-            print("\nPassword input was empty. Operation cancelled, no password will be set.")
+    // Check for --no-clobber flag
+    if let noClobberIndex = remainingArgs.firstIndex(of: "--no-clobber") {
+        noClobber = true
+        remainingArgs.remove(at: noClobberIndex)
+    }
+
+    // Determine secret (either from remaining arg or prompt)
+    if remainingArgs.count == 1 {
+        secret = String(remainingArgs.first!)
+    } else if remainingArgs.isEmpty {
+        print("Enter password for key '\(key)' [input is hidden]: ", terminator: "")
+        fflush(stdout)
+        if let cPassword = getpass("") {
+            let enteredPassword = String(cString: cPassword)
+            if enteredPassword.isEmpty {
+                print("\nPassword input was empty. Operation cancelled, no password will be set.")
+                exit(EXIT_FAILURE)
+            }
+            secret = enteredPassword
+        } else {
+            print("\nPassword input cancelled or failed. No password will be set.")
             exit(EXIT_FAILURE)
         }
-        secret = enteredPassword
-      } else {
-        // getpass() returned NULL, e.g., due to EOF (Ctrl+D) or an error.
-        print("\nPassword input cancelled or failed. No password will be set.")
-        exit(EXIT_FAILURE)
-      }
     } else {
-      print("Error: 'set' action requires a key, and optionally a secret on the command line.")
-      print("If the secret is not provided as an argument, you will be prompted for it.")
-      usage()
-      exit(EXIT_FAILURE)
+        // Too many arguments after processing key and flag
+        print("Error: Invalid arguments for 'set' action.")
+        print("See usage for correct format.")
+        usage()
+        exit(EXIT_FAILURE)
     }
+
     context.evaluatePolicy(policy, localizedReason: "set the password for \(key)") { success, authError in
       if success && authError == nil {
-        guard setPassword(key: key, password: secret) else {
-          print("Error setting password")
+        if setPassword(key: key, password: secret, addOnly: noClobber) {
+            print("Key \(key) has been successfully set in the keychain.")
+            exit(EXIT_SUCCESS)
+        } else {
+          // setPassword function already prints specific error or "already exists" message
           exit(EXIT_FAILURE)
         }
-        print("Key \(key) has been successfully set in the keychain")
-        exit(EXIT_SUCCESS)
       } else {
         let errorDescription = authError?.localizedDescription ?? "Unknown error"
         print("Authentication failed or was canceled: \(errorDescription)")
