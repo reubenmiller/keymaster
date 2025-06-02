@@ -89,7 +89,7 @@ jobs:
           # This awk script updates the url and sha256 lines in the formula.
           # It's designed to handle the initial placeholder SHA and subsequent updates.
           awk -v ver_tag="$NEW_VERSION_TAG" -v sha="$NEW_SHA256" '
-            /url "/ { gsub(/refs\/tags\/v[0-9A-Za-z.-]+(\.tar\.gz)?/, "refs/tags/" ver_tag ".tar.gz"); print; next }
+            /url "/ { gsub(/refs\/tags\/v?[0-9A-Za-z.-]+(\.tar\.gz)?/, "refs/tags/" ver_tag ".tar.gz"); print; next }
             /sha256 "/ { gsub(/sha256 ".+"/, "sha256 \"" sha "\""); print; next }
             { print }
           ' touchie.rb > touchie.rb.tmp && mv touchie.rb.tmp touchie.rb
