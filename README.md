@@ -1,6 +1,6 @@
-# Keymaster
+# Touchie
 
-Keymaster is a small binary written in Swift that allows scripts to access the Mac Keychain guarded by TouchID.
+Touchie is a small binary written in Swift that allows scripts to access the Mac Keychain guarded by TouchID.
 
 Macs come with the `security` command which can get and set secrets to the Keychain:
 
@@ -15,7 +15,7 @@ security find-generic-password -s "MyKeyName" -w
 
 You can use `security` in a script, but (AFAIK) you can't tell it to use biometrics to guard secrets, you have to enter the password each time, or "always allow" the `security` binary to access the secret.
 
-🔑 Keymaster fixes this.
+🔑 Touchie fixes this.
 
 ## Installation
 
@@ -23,34 +23,34 @@ You can use `security` in a script, but (AFAIK) you can't tell it to use biometr
 
 1.  Tap the custom Homebrew tap (you only need to do this once)
     ```bash
-    brew tap reubenmiller/homebrew-keymaster
+    brew tap reubenmiller/homebrew-touchie
     ```
 
-2.  Install Keymaster:
+2.  Install Touchie:
     ```bash
-    brew install keymaster
+    brew install touchie
     ```
 
 ### Manual Build
 
-Compile the `keymaster.swift` into a binary:
+Compile the `touchie.swift` into a binary:
 
 ```bash
-swiftc keymaster.swift -o keymaster
+swiftc touchie.swift -o touchie
 ```
 
 Put the binary somewhere in your path.
 
 ## Save a secret to the keychain
 
-`keymaster set MyKeyName MySecret`
+`touchie set MyKeyName MySecret`
 
 ## Retrieve a secret
 
-`keymaster get MyKeyName`
+`touchie get MyKeyName`
 
-The first time you `get` the secret, you should "always allow" the `keymaster` binary. Upon subsequent accesses, you will always be prompted for TouchID in order to access the secret.
+The first time you `get` the secret, you should "always allow" the `touchie` binary. Upon subsequent accesses, you will always be prompted for TouchID in order to access the secret.
 
 To change the secret, you can use the `Keychain Access.app` that comes with your Mac.
 
-You can use `keymaster` in bash scripts or Automator Workflows, or wherever you need secure access to a secret.
+You can use `touchie` in bash scripts or Automator Workflows, or wherever you need secure access to a secret.

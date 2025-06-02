@@ -1,9 +1,9 @@
-name: Release Keymaster
+name: Release Touchie
 
 on:
   push:
     tags:
-      - '*.*.*' # Trigger on SemVer tags like v0.1.0, v1.2.3
+      - '*.*.*' # Trigger on SemVer tags
 
 jobs:
   build-and-release:
@@ -22,19 +22,19 @@ jobs:
         id: get_version
         run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      - name: Build Keymaster binary
-        run: swiftc keymaster.swift -o keymaster
+      - name: Build Touchie binary
+        run: swiftc touchie.swift -o touchie
 
       - name: Create Release Tarball URL
         id: get_tarball_url
         run: echo "url=https://github.com/${{ github.repository }}/archive/refs/tags/${{ steps.get_version.outputs.version }}.tar.gz" >> $GITHUB_OUTPUT
 
       - name: Download release tarball
-        run: curl -L -o keymaster-${{ steps.get_version.outputs.version }}.tar.gz ${{ steps.get_tarball_url.outputs.url }}
+        run: curl -L -o touchie-${{ steps.get_version.outputs.version }}.tar.gz ${{ steps.get_tarball_url.outputs.url }}
 
       - name: Calculate SHA256
         id: calculate_sha
-        run: echo "sha256_value=$(shasum -a 256 keymaster-${{ steps.get_version.outputs.version }}.tar.gz | awk '{print $1}')" >> $GITHUB_OUTPUT
+        run: echo "sha256_value=$(shasum -a 256 touchie-${{ steps.get_version.outputs.version }}.tar.gz | awk '{print $1}')" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
         env:
@@ -43,8 +43,8 @@ jobs:
         run: |
           gh release create ${{ steps.get_version.outputs.version }} \
             --title "Release ${{ steps.get_version.outputs.version }}" \
-            --notes "Release notes for Keymaster version ${{ steps.get_version.outputs.version }}." \
-            keymaster # Upload the built binary as an asset
+            --notes "Release notes for Touchie version ${{ steps.get_version.outputs.version }}." \
+            touchie # Upload the built binary as an asset
             # GitHub automatically adds source code zip and tar.gz
 
       - name: Suggest next version numbers
@@ -75,7 +75,7 @@ jobs:
       - name: Checkout Homebrew tap repository
         uses: actions/checkout@v4
         with:
-          repository: reubenmiller/homebrew-keymaster
+          repository: reubenmiller/homebrew-touchie
           token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
           path: homebrew-tap # Checkout to a specific path
 
@@ -92,21 +92,21 @@ jobs:
             /url "/ { gsub(/refs\/tags\/v[0-9A-Za-z.-]+(\.tar\.gz)?/, "refs/tags/" ver_tag ".tar.gz"); print; next }
             /sha256 "/ { gsub(/sha256 ".+"/, "sha256 \"" sha "\""); print; next }
             { print }
-          ' keymaster.rb > keymaster.rb.tmp && mv keymaster.rb.tmp keymaster.rb
+          ' touchie.rb > touchie.rb.tmp && mv touchie.rb.tmp touchie.rb
 
           echo "Formula after update:"
-          cat keymaster.rb
+          cat touchie.rb
 
       - name: Commit and push changes to Homebrew tap
         working-directory: ./homebrew-tap
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/keymaster.rb
+          git add Formula/touchie.rb
           if git diff --staged --quiet; then
             echo "No changes to commit to Homebrew tap."
           else
-            git commit -m "Update keymaster to version ${{ needs.build-and-release.outputs.version }}"
+            git commit -m "Update touchie to version ${{ needs.build-and-release.outputs.version }}"
             git push
             echo "Changes pushed to Homebrew tap."
           fi

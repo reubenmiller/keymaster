@@ -1,4 +1,4 @@
-// Keymaster, access Keychain secrets guarded by TouchID
+// Touchie, access Keychain secrets guarded by TouchID
 //
 import Darwin // For getpass()
 import Foundation
@@ -6,8 +6,8 @@ import LocalAuthentication
 
 // Policy for Touch ID/Face ID authentication
 let policy = LAPolicy.deviceOwnerAuthenticationWithBiometrics
-// Unique label to identify keychain entries managed by this keymaster tool
-let keymasterLabelValue = "com.github.reubenmiller.keymaster.entry"
+// Unique label to identify keychain entries managed by this touchie tool
+let touchieLabelValue = "com.github.reubenmiller.touchie.entry"
 
 // Helper to print to stderr
 func printErr(_ message: String) {
@@ -23,11 +23,11 @@ func setPassword(key: String, password: String, addOnly: Bool) -> Bool {
   // Data for the keychain item
   let valueData = password.data(using: .utf8)!
 
-  // Query to find an existing item managed by keymaster
+  // Query to find an existing item managed by touchie
   let queryForUpdate: [String: Any] = [
     kSecClass as String: kSecClassGenericPassword,
     kSecAttrService as String: key,
-    kSecAttrLabel as String: keymasterLabelValue // Ensure we only target keymaster entries
+    kSecAttrLabel as String: touchieLabelValue // Ensure we only target touchie entries
   ]
 
   if addOnly {
@@ -50,15 +50,15 @@ func setPassword(key: String, password: String, addOnly: Bool) -> Bool {
       let unlabeledCheckStatus = SecItemCopyMatching(queryForUnlabeledExisting as CFDictionary, &unlabeledItem)
 
       if unlabeledCheckStatus == errSecSuccess {
-        printErr("Error: An item with key '\(key)' already exists but is not managed by keymaster (it lacks the keymaster label).")
-        printErr("To manage this item with keymaster, it must first be removed or updated to include the keymaster label by other means.")
+        printErr("Error: An item with key '\(key)' already exists but is not managed by touchie (it lacks the touchie label).")
+        printErr("To manage this item with touchie, it must first be removed or updated to include the touchie label by other means.")
         return false
       } else if unlabeledCheckStatus == errSecItemNotFound {
         // Good, no conflicting unlabeled item. Proceed to add a new, labeled item.
         let attributesForAdd: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: key,
-            kSecAttrLabel as String: keymasterLabelValue, // Add the keymaster label
+            kSecAttrLabel as String: touchieLabelValue, // Add the touchie label
             kSecValueData as String: valueData
         ]
         let addStatus = SecItemAdd(attributesForAdd as CFDictionary, nil)
@@ -72,8 +72,8 @@ func setPassword(key: String, password: String, addOnly: Bool) -> Bool {
         return false
       }
     } else {
-      // Some other error occurred while checking for existing keymaster item
-      printErr("Error checking for existing keymaster-managed item for key '\(key)'. Status: \(existingStatus)")
+      // Some other error occurred while checking for existing touchie item
+      printErr("Error checking for existing touchie-managed item for key '\(key)'. Status: \(existingStatus)")
       return false
     }
   } else {
@@ -94,14 +94,14 @@ func setPassword(key: String, password: String, addOnly: Bool) -> Bool {
       let unlabeledCheckStatus = SecItemCopyMatching(queryForUnlabeledExisting as CFDictionary, &unlabeledItem)
 
       if unlabeledCheckStatus == errSecSuccess {
-          printErr("Error: An item with key '\(key)' already exists but is not managed by keymaster (it lacks the keymaster label).")
-          printErr("To manage this item with keymaster, it must first be removed or updated to include the keymaster label by other means.")
+          printErr("Error: An item with key '\(key)' already exists but is not managed by touchie (it lacks the touchie label).")
+          printErr("To manage this item with touchie, it must first be removed or updated to include the touchie label by other means.")
           return false
       } else if unlabeledCheckStatus == errSecItemNotFound {
           let attributesForAdd: [String: Any] = [
               kSecClass as String: kSecClassGenericPassword,
               kSecAttrService as String: key,
-              kSecAttrLabel as String: keymasterLabelValue,
+              kSecAttrLabel as String: touchieLabelValue,
               kSecValueData as String: valueData
           ]
           status = SecItemAdd(attributesForAdd as CFDictionary, nil)
@@ -125,20 +125,20 @@ func deletePassword(key: String) -> OSStatus {
   let query: [String: Any] = [
     kSecClass as String: kSecClassGenericPassword,
     kSecAttrService as String: key,
-    kSecAttrLabel as String: keymasterLabelValue // Ensure we only delete keymaster entries
+    kSecAttrLabel as String: touchieLabelValue // Ensure we only delete touchie entries
   ]
   let status = SecItemDelete(query as CFDictionary)
   return status
 }
 
-// Checks if an exact key exists and is managed by keymaster.
+// Checks if an exact key exists and is managed by touchie.
 // This function does NOT require biometric authentication.
 // It prints errors to stderr if the key is not found or an error occurs.
 func checkExactKeyExists(key: String) -> Bool {
     let query: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,
         kSecAttrService as String: key,
-        kSecAttrLabel as String: keymasterLabelValue
+        kSecAttrLabel as String: touchieLabelValue
         // kSecMatchLimit is implicitly kSecMatchLimitOne if not kSecMatchLimitAll
     ]
     var junkItemResult: CFTypeRef? // Required for SecItemCopyMatching, but we only care about status
@@ -147,7 +147,7 @@ func checkExactKeyExists(key: String) -> Bool {
     if status == errSecSuccess {
         return true // Item exists
     } else if status == errSecItemNotFound {
-        printErr("Error: Password for key '\(key)' not found or not managed by keymaster.")
+        printErr("Error: Password for key '\(key)' not found or not managed by touchie.")
         return false // Item does not exist
     } else {
         printErr("Error checking for key '\(key)' in keychain. Status: \(status). (\(SecCopyErrorMessageString(status, nil) as String? ?? "Unknown OSStatus"))")
@@ -159,10 +159,10 @@ func checkExactKeyExists(key: String) -> Bool {
 // This function does NOT require biometric authentication.
 // It prints errors to stderr if no unique match is found.
 func resolveKeyFromPattern(pattern: String) -> String? {
-  // 1. Query all keymaster-managed items to get their service attributes
+  // 1. Query all touchie-managed items to get their service attributes
   let queryAllItems: [String: Any] = [
     kSecClass as String: kSecClassGenericPassword,
-    kSecAttrLabel as String: keymasterLabelValue,
+    kSecAttrLabel as String: touchieLabelValue,
     kSecMatchLimit as String: kSecMatchLimitAll,
     kSecReturnAttributes as String: true // We need kSecAttrService
   ]
@@ -171,7 +171,7 @@ func resolveKeyFromPattern(pattern: String) -> String? {
 
   guard listStatus == errSecSuccess else {
     if listStatus == errSecItemNotFound {
-      printErr("No keymaster-managed passwords found in keychain to match against pattern '\(pattern)'.")
+      printErr("No touchie-managed passwords found in keychain to match against pattern '\(pattern)'.")
     } else {
       printErr("Error fetching keys from keychain to match against pattern. Status: \(listStatus)")
     }
@@ -182,7 +182,7 @@ func resolveKeyFromPattern(pattern: String) -> String? {
     return nil
   }
   if retrievedItems.isEmpty {
-    printErr("No keymaster-managed passwords found in keychain to match against pattern '\(pattern)'.")
+    printErr("No touchie-managed passwords found in keychain to match against pattern '\(pattern)'.")
     return nil
   }
 
@@ -226,7 +226,7 @@ func fetchPasswordForExactKey(key: String) -> String? {
   let queryPassword: [String: Any] = [
     kSecClass as String: kSecClassGenericPassword,
     kSecAttrService as String: key,
-    kSecAttrLabel as String: keymasterLabelValue,
+    kSecAttrLabel as String: touchieLabelValue,
     kSecMatchLimit as String: kSecMatchLimitOne,
     kSecReturnData as String: true
   ]
@@ -237,9 +237,9 @@ func fetchPasswordForExactKey(key: String) -> String? {
         let password = String(data: passwordData, encoding: .utf8)
   else {
     if fetchStatus == errSecItemNotFound {
-         printErr("Error: Password for key '\(key)' not found or not managed by keymaster.")
+         printErr("Error: Password for key '\(key)' not found or not managed by touchie.")
     } else {
-         printErr("Error retrieving password for key '\(key)'. Status: \(fetchStatus)")
+         printErr("Error retrieving password for key '\(key)'. Status: \(fetchStatus). (\(SecCopyErrorMessageString(fetchStatus, nil) as String? ?? "Unknown OSStatus"))")
     }
     return nil
   }
@@ -250,7 +250,7 @@ func fetchPasswordForExactKey(key: String) -> String? {
 func listPasswords(regexPattern: String? = nil) -> Bool {
   let query: [String: Any] = [
     kSecClass as String: kSecClassGenericPassword,
-    kSecAttrLabel as String: keymasterLabelValue, // Filter by the keymaster label
+    kSecAttrLabel as String: touchieLabelValue, // Filter by the touchie label
     kSecMatchLimit as String: kSecMatchLimitAll,
     kSecReturnAttributes as String: true,
     // kSecAttrSynchronizable as String: kSecAttrSynchronizableAny // Optional: uncomment to include iCloud keychain items
@@ -260,7 +260,7 @@ func listPasswords(regexPattern: String? = nil) -> Bool {
   let status = SecItemCopyMatching(query as CFDictionary, &cfArrayResult)
 
   if status == errSecItemNotFound {
-    printErr("No keymaster-managed passwords found in keychain.")
+    printErr("No touchie-managed passwords found in keychain.")
     return false // No items to list, so operation did not produce list output
   }
 
@@ -268,7 +268,7 @@ func listPasswords(regexPattern: String? = nil) -> Bool {
     // For more detailed error, you could use:
     // let errorDescription = SecCopyErrorMessageString(status, nil) as String? ?? "Unknown OSStatus"
     // printErr("Error fetching passwords from keychain. Status: \(status) (\(errorDescription))")
-    printErr("Error fetching keymaster-managed passwords from keychain. Status: \(status)")
+    printErr("Error fetching touchie-managed passwords from keychain. Status: \(status)")
     return false // Operation failed
   }
 
@@ -279,7 +279,7 @@ func listPasswords(regexPattern: String? = nil) -> Bool {
   }
 
   if retrievedItems.isEmpty {
-    printErr("No keymaster-managed passwords found in keychain.")
+    printErr("No touchie-managed passwords found in keychain.")
     return false // No items to list
   }
 
@@ -315,11 +315,11 @@ func listPasswords(regexPattern: String? = nil) -> Bool {
       printErr("No keys found matching the regex pattern: '\(regexPattern!)'")
     }
     // If no regex and servicesToPrint is empty, the earlier checks for empty retrievedItems
-    // would have printed "No keymaster-managed passwords found...".
+    // would have printed "No touchie-managed passwords found...".
     return false // No items were ultimately listed
   }
 
-  fputs("Stored keymaster-managed keys (services):\n", stderr) // Header to stderr
+  fputs("Stored touchie-managed keys (services):\n", stderr) // Header to stderr
   for service in servicesToPrint {
     print("- \(service)") // Actual keys to stdout
   }
@@ -327,7 +327,7 @@ func listPasswords(regexPattern: String? = nil) -> Bool {
 }
 
 func usage() {
-  let programName = "keymaster"
+  let programName = "touchie"
   print("""
   Usage: \(programName) <command> [options]
 
@@ -437,7 +437,7 @@ func main() {
         let queryForKeyExistence: [String: Any] = [
           kSecClass as String: kSecClassGenericPassword,
           kSecAttrService as String: key,
-          kSecAttrLabel as String: keymasterLabelValue
+          kSecAttrLabel as String: touchieLabelValue
         ]
         var item: CFTypeRef?
         let existingStatus = SecItemCopyMatching(queryForKeyExistence as CFDictionary, &item)
@@ -495,16 +495,16 @@ func main() {
     var keyOrPatternArg: String
     var useRegex = false
 
-    if inputArgs.count == 2 { // e.g., "keymaster get mykey"
+    if inputArgs.count == 2 { // e.g., "touchie get mykey"
         keyOrPatternArg = inputArgs[1]
         useRegex = false
-    } else if inputArgs.count == 3 && inputArgs[1] == "--regex" { // e.g., "keymaster get --regex mypattern"
+    } else if inputArgs.count == 3 && inputArgs[1] == "--regex" { // e.g., "touchie get --regex mypattern"
         keyOrPatternArg = inputArgs[2]
         useRegex = true
     } else {
         printErr("Error: Invalid arguments for 'get' action.")
-        printErr("Usage: keymaster get <key>")
-        printErr("   or: keymaster get --regex <pattern>")
+        printErr("Usage: touchie get <key>")
+        printErr("   or: touchie get --regex <pattern>")
         exit(EXIT_FAILURE)
     }
 
@@ -556,8 +556,8 @@ func main() {
         case errSecSuccess:
           printErr("Key '\(key)' has been successfully deleted from the keychain.")
           exit(EXIT_SUCCESS)
-        case errSecItemNotFound:
-          printErr("Error: Password for key '\(key)' not found or not managed by keymaster.")
+        case errSecItemNotFound: // This case should ideally be caught by a pre-check if we add one for delete
+          printErr("Error: Password for key '\(key)' not found or not managed by touchie.")
           exit(EXIT_FAILURE)
         default:
           let errorDescription = SecCopyErrorMessageString(deleteStatus, nil) as String? ?? "Unknown OSStatus"
