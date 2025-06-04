@@ -2,34 +2,48 @@
 
 Touchie is a small binary written in Swift that allows scripts to access the Mac Keychain guarded by TouchID.
 
-Macs come with the `security` command which can get and set secrets to the Keychain:
+Touchie only lists the secrets created by touchie, so you don't have to worry it accessing things it shouldn't.
 
-```bash
-# Save a key/value to the default "login" keychain, with key "MyKeyName", update if exists (-U), 
-# allow no app to access without a prompt (-T ""), and prompt for secret to store (-w)
-security add-generic-password -a login -s "MyKeyName" -T "" -U -w
+**Note:** Based on the [johnthethird/keymaster](https://github.com/johnthethird/keymaster) project, and extended with the help of AI.
 
-# Get the secret value from a key
-security find-generic-password -s "MyKeyName" -w
+## Features
+
+Common examples showing off what touchie can do:
+
+The first time you `get` the secret, you should "always allow" the `touchie` binary. Upon subsequent accesses, you will always be prompted for TouchID in order to access the secret.
+
+```sh
+# set a secret, you'll be prompted for the secret value
+touchie set mysecret
+
+# set a secret only if it does not exist already
+touchie set mysecret --no-clobber
+
+# Get a secret
+touchie get mysecret
+
+# Get a secret by a regex (must only match one value)
+touchie get --regex mysecret
+
+# List secrets (but don't show the passwords)
+touchie list
+
+# List secrets which match a regex filter
+touchie list '^C8Y'
+
+# Delete a secret
+touchie delete mysecret
 ```
-
-You can use `security` in a script, but (AFAIK) you can't tell it to use biometrics to guard secrets, you have to enter the password each time, or "always allow" the `security` binary to access the secret.
-
-🔑 Touchie fixes this.
 
 ## Installation
 
 ### Using Homebrew (Recommended)
 
-1.  Tap the custom Homebrew tap (you only need to do this once)
-    ```bash
-    brew tap reubenmiller/homebrew-touchie
-    ```
+```bash
+brew install reubenmiller/iot-tap/touchie
+```
 
-2.  Install Touchie:
-    ```bash
-    brew install touchie
-    ```
+**Note** The Formula and bottles are currently hosted in [reubenmiller/homebrew-iot-tap](https://github.com/reubenmiller/homebrew-iot-tap)
 
 ### Manual Build
 
@@ -41,16 +55,50 @@ swiftc touchie.swift -o touchie
 
 Put the binary somewhere in your path.
 
-## Save a secret to the keychain
+## Get help
 
-`touchie set MyKeyName MySecret`
+```sh
+touchie --help
+```
 
-## Retrieve a secret
+Get the full list of supported commands and list of all options.
 
-`touchie get MyKeyName`
+## go-c8y-cli users
 
-The first time you `get` the secret, you should "always allow" the `touchie` binary. Upon subsequent accesses, you will always be prompted for TouchID in order to access the secret.
+If you want to use touchie to store your [go-c8y-cli](https://goc8ycli.netlify.app/) session encryption passphrase, then you can add a modified `set-session` shell function to your zshrc profile, though it should be placed after the `c8y cli profile`, or after the loading of the oh-my-zsh.
 
-To change the secret, you can use the `Keychain Access.app` that comes with your Mac.
+**file: ~/.zshrc**
 
-You can use `touchie` in bash scripts or Automator Workflows, or wherever you need secure access to a secret.
+```sh
+set-session() {
+    if command -V touchie >/dev/null 2>&1; then
+      c8yenv=$(C8Y_PASSPHRASE="$(touchie get C8Y_PASSPHRASE)" c8y sessions set --noColor=false $@ )
+    else
+      c8yenv=$(c8y sessions set --noColor=false $@ )
+    fi
+    
+    code=$?
+    if [ $code -ne 0 ]
+    then
+      echo "Set session failed"
+      return 1
+    fi
+    eval "$c8yenv"
+}
+```
+
+Then reload your zsh.
+
+Now set your [go-c8y-cli](https://goc8ycli.netlify.app/) session passphrase in keychain using the following command:
+
+```sh
+touchie set C8Y_PASSPHRASE
+```
+
+Now, you can activate sessions, and then you'll be prompted for your TouchID credentials when switching a session.
+
+```sh
+set-session
+```
+
+**Note:** You will be prompted for your password the first time, and as long as you select the "Always allow" then you shouldn't be prompted again.
