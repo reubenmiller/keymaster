@@ -65,26 +65,16 @@ Get the full list of supported commands and list of all options.
 
 ## go-c8y-cli users
 
-If you want to use touchie to store your [go-c8y-cli](https://goc8ycli.netlify.app/) session encryption passphrase, then you can add a modified `set-session` shell function to your zshrc profile, though it should be placed after the `c8y cli profile`, or after the loading of the oh-my-zsh.
+If you want to use touchie to store your [go-c8y-cli](https://goc8ycli.netlify.app/) session encryption passphrase, then you can add the following to your shell profile.
+
 
 **file: ~/.zshrc**
 
 ```sh
-set-session() {
-    if command -V touchie >/dev/null 2>&1; then
-      c8yenv=$(C8Y_PASSPHRASE="$(touchie get C8Y_PASSPHRASE)" c8y sessions set --noColor=false $@ )
-    else
-      c8yenv=$(c8y sessions set --noColor=false $@ )
-    fi
-    
-    code=$?
-    if [ $code -ne 0 ]
-    then
-      echo "Set session failed"
-      return 1
-    fi
-    eval "$c8yenv"
-}
+eval "$(c8y settings update pinEntry "touchie get" --shell auto)"
+
+# or just explicitly setting the env variable
+export C8Y_SETTINGS_PINENTRY="touchie get"
 ```
 
 Then reload your zsh.
