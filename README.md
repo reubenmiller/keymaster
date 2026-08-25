@@ -40,6 +40,7 @@ touchie delete mysecret
 ### Using Homebrew (Recommended)
 
 ```bash
+brew trust reubenmiller/iot-tap
 brew install reubenmiller/iot-tap/touchie
 ```
 
